@@ -196,18 +196,32 @@ def normalize_name(value: object) -> str | None:
 	return normalized
 
 
-def normalize_campus(value: object) -> str | None:
+def normalize_campus(value: object, custom_map: dict[str, str] | None = None) -> str | None:
 	normalized = normalize_name(value)
 	if normalized is None:
 		return None
+	
+	# Apply custom mappings first, then fall back to default
+	if custom_map:
+		result = custom_map.get(normalized, normalized)
+		# Also check default map if not in custom
+		if result == normalized:
+			result = CAMPUS_EQUIVALENCY_MAP.get(normalized, normalized)
+		return result
+	
 	return CAMPUS_EQUIVALENCY_MAP.get(normalized, normalized)
 
 
-def normalize_program(value: object) -> str | None:
+def normalize_program(value: object, custom_map: dict[str, str] | None = None) -> str | None:
 	normalized = normalize_name(value)
 	if normalized is None:
 		return None
 
+	# Apply custom mappings first
+	if custom_map and normalized in custom_map:
+		return custom_map[normalized]
+	
+	# Fall back to default mapping
 	if normalized in PROGRAM_EQUIVALENCY_MAP:
 		return PROGRAM_EQUIVALENCY_MAP[normalized]
 
@@ -325,12 +339,12 @@ def status_from_sets(left: list[str], right: list[str]) -> str:
 	return "MISMATCH"
 
 
-def status_from_sets_college(left: list[str], right: list[str]) -> str:
+def status_from_sets_college(left: list[str], right: list[str], custom_equivalences: dict[str, str] | None = None) -> str:
 	"""Validate college with specific matching rules."""
 	if not left or not right:
 		return "MISSING"
 	
-	# Define college equivalences
+	# Define default college equivalences
 	college_matches = {
 		frozenset(["CEAFA", "COE", "CAFAD"]),
 		frozenset(["CIT", "CET"]),
@@ -338,6 +352,25 @@ def status_from_sets_college(left: list[str], right: list[str]) -> str:
 		frozenset(["CABEIHM", "CABE"]),
 		frozenset(["CAS", "CCJE"]),
 	}
+	
+	# Add custom equivalences if provided
+	if custom_equivalences:
+		# Group custom mappings into equivalence sets
+		custom_groups: dict[str, set[str]] = {}
+		for source_val, target_val in custom_equivalences.items():
+			source_normalized = normalize_name(source_val)
+			target_normalized = normalize_name(target_val)
+			if source_normalized and target_normalized:
+				# Find or create a group for these equivalents
+				key = target_normalized
+				if key not in custom_groups:
+					custom_groups[key] = {target_normalized}
+				custom_groups[key].add(source_normalized)
+		
+		# Add custom groups to college_matches
+		for group in custom_groups.values():
+			if len(group) > 1:
+				college_matches.add(frozenset(group))
 	
 	# Check for direct intersection first
 	if set(left).intersection(set(right)):
@@ -353,15 +386,31 @@ def status_from_sets_college(left: list[str], right: list[str]) -> str:
 	return "MISMATCH"
 
 
-def status_from_sets_program(left: list[str], right: list[str]) -> str:
+def status_from_sets_program(left: list[str], right: list[str], custom_equivalences: dict[str, str] | None = None) -> str:
 	"""Validate program with specific matching rules."""
 	if not left or not right:
 		return "MISSING"
 	
-	# Define program equivalences
+	# Define default program equivalences
 	program_matches = {
 		frozenset(["BACHELOR OF INDUSTRIAL TECHNOLOGY", "BACHELOR OF ENGINEERING TECHNOLOGY"]),
 	}
+	
+	# Add custom equivalences if provided
+	if custom_equivalences:
+		custom_groups: dict[str, set[str]] = {}
+		for source_val, target_val in custom_equivalences.items():
+			source_normalized = normalize_name(source_val)
+			target_normalized = normalize_name(target_val)
+			if source_normalized and target_normalized:
+				key = target_normalized
+				if key not in custom_groups:
+					custom_groups[key] = {target_normalized}
+				custom_groups[key].add(source_normalized)
+		
+		for group in custom_groups.values():
+			if len(group) > 1:
+				program_matches.add(frozenset(group))
 	
 	# Check for direct intersection first
 	if set(left).intersection(set(right)):
@@ -393,6 +442,9 @@ def build_data_validation_rows(
 	source_college_col: str,
 	target_college_cols: list[str],
 	found_names: list[str],
+	custom_campus_map: dict[str, str] | None = None,
+	custom_program_map: dict[str, str] | None = None,
+	custom_college_map: dict[str, str] | None = None,
 ) -> pd.DataFrame:
 	source_enriched = source_df.copy()
 	target_enriched = target_df.copy()
@@ -404,10 +456,22 @@ def build_data_validation_rows(
 		source_rows = source_enriched[source_enriched["_normalized_fullname"] == matched_name]
 		target_rows = target_enriched[target_enriched["_normalized_fullname"] == matched_name]
 
-		source_campus_values = get_normalized_set(source_rows[source_campus_col], normalizer=normalize_campus)
-		target_campus_values = get_normalized_set(target_rows[target_campus_col], normalizer=normalize_campus)
-		source_program_values = get_normalized_set(source_rows[source_program_col], normalizer=normalize_program)
-		target_program_values = get_normalized_set(target_rows[target_program_col], normalizer=normalize_program)
+		source_campus_values = get_normalized_set(
+			source_rows[source_campus_col], 
+			normalizer=lambda v: normalize_campus(v, custom_campus_map)
+		)
+		target_campus_values = get_normalized_set(
+			target_rows[target_campus_col], 
+			normalizer=lambda v: normalize_campus(v, custom_campus_map)
+		)
+		source_program_values = get_normalized_set(
+			source_rows[source_program_col], 
+			normalizer=lambda v: normalize_program(v, custom_program_map)
+		)
+		target_program_values = get_normalized_set(
+			target_rows[target_program_col], 
+			normalizer=lambda v: normalize_program(v, custom_program_map)
+		)
 		source_college_values = get_normalized_set(source_rows[source_college_col])
 		target_college_set: set[str] = set()
 		for target_college_col in target_college_cols:
@@ -415,8 +479,8 @@ def build_data_validation_rows(
 		target_college_values = sorted(target_college_set)
 
 		campus_status = status_from_sets(source_campus_values, target_campus_values)
-		program_status = status_from_sets_program(source_program_values, target_program_values)
-		college_status = status_from_sets_college(source_college_values, target_college_values)
+		program_status = status_from_sets_program(source_program_values, target_program_values, custom_program_map)
+		college_status = status_from_sets_college(source_college_values, target_college_values, custom_college_map)
 
 		if campus_status == "MATCH" and program_status == "MATCH" and college_status == "MATCH":
 			overall_status = "MATCH"
@@ -479,6 +543,9 @@ def compare_files(
 	target_sheet: str | int,
 	source_column: str | None,
 	target_column: str | None,
+	custom_campus_map: dict[str, str] | None = None,
+	custom_program_map: dict[str, str] | None = None,
+	custom_college_map: dict[str, str] | None = None,
 ) -> CompareResult:
 	source_df = read_tabular_file(source_path, source_sheet)
 	target_df = read_tabular_file(target_path, target_sheet)
@@ -556,6 +623,9 @@ def compare_files(
 		source_college_col=resolved_source_college_column,
 		target_college_cols=resolved_target_college_columns,
 		found_names=found_set,
+		custom_campus_map=custom_campus_map,
+		custom_program_map=custom_program_map,
+		custom_college_map=custom_college_map,
 	)
 
 	return CompareResult(
@@ -1068,33 +1138,31 @@ def build_modern_summary_sheet(
 	ws.row_dimensions[footer_row].height = 18
 
 
-def write_report_to_file(
+def write_report_to_bytes(
 	result: CompareResult,
-	output_path: Path,
 	*,
 	source_label: str = "SOURCE",
 	target_label: str = "TARGET",
-) -> None:
-	if output_path.suffix.lower() != ".xlsx":
-		raise ValueError("Output file must use .xlsx extension.")
-
+) -> bytes:
+	"""Generate Excel report in memory and return as bytes."""
+	from io import BytesIO
+	
 	target_to_source_df = result.target_centered_rows
 	combined_duplicates_df = build_combined_duplicates_df(result)
-
-	output_path.parent.mkdir(parents=True, exist_ok=True)
-	with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+	
+	output_buffer = BytesIO()
+	with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
 		target_to_source_df.to_excel(writer, sheet_name="Target_to_Source", index=False)
 		result.source_centered_rows.to_excel(writer, sheet_name="Source_to_Target", index=False)
 		combined_duplicates_df.to_excel(writer, sheet_name="Duplicates", index=False)
 		result.data_validation_rows.to_excel(writer, sheet_name="Data Validation", index=False)
-		# Rebuild Summary from scratch (clean/modern) so old user-added charts/analytics
-		# are not carried over.
+		
 		wb = writer.book
 		if "Summary" in wb.sheetnames:
 			wb.remove(wb["Summary"])
 		summary_sheet = wb.create_sheet("Summary", 0)
 		writer.sheets["Summary"] = summary_sheet
-
+		
 		source_to_target_sheet = writer.sheets["Source_to_Target"]
 		target_to_source_sheet = writer.sheets["Target_to_Source"]
 		data_validation_sheet = writer.sheets["Data Validation"]
@@ -1117,6 +1185,24 @@ def write_report_to_file(
 		apply_data_validation_colors(data_validation_sheet, result.data_validation_rows)
 		freeze_top_row_all_worksheets(writer.book)
 		autofit_all_worksheets(writer.book)
+	
+	output_buffer.seek(0)
+	return output_buffer.read()
+
+
+def write_report_to_file(
+	result: CompareResult,
+	output_path: Path,
+	*,
+	source_label: str = "SOURCE",
+	target_label: str = "TARGET",
+) -> None:
+	if output_path.suffix.lower() != ".xlsx":
+		raise ValueError("Output file must use .xlsx extension.")
+
+	output_path.parent.mkdir(parents=True, exist_ok=True)
+	report_bytes = write_report_to_bytes(result, source_label=source_label, target_label=target_label)
+	output_path.write_bytes(report_bytes)
 
 
 def parse_sheet_arg(value: str | int) -> str | int:
