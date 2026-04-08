@@ -325,6 +325,58 @@ def status_from_sets(left: list[str], right: list[str]) -> str:
 	return "MISMATCH"
 
 
+def status_from_sets_college(left: list[str], right: list[str]) -> str:
+	"""Validate college with specific matching rules."""
+	if not left or not right:
+		return "MISSING"
+	
+	# Define college equivalences
+	college_matches = {
+		frozenset(["CEAFA", "COE", "CAFAD"]),
+		frozenset(["CIT", "CET"]),
+		frozenset(["CONAHS", "CHS"]),
+		frozenset(["CABEIHM", "CABE"]),
+		frozenset(["CAS", "CCJE"]),
+	}
+	
+	# Check for direct intersection first
+	if set(left).intersection(set(right)):
+		return "MATCH"
+	
+	# Check for equivalent colleges
+	for left_val in left:
+		for right_val in right:
+			for match_set in college_matches:
+				if left_val in match_set and right_val in match_set:
+					return "MATCH"
+	
+	return "MISMATCH"
+
+
+def status_from_sets_program(left: list[str], right: list[str]) -> str:
+	"""Validate program with specific matching rules."""
+	if not left or not right:
+		return "MISSING"
+	
+	# Define program equivalences
+	program_matches = {
+		frozenset(["BACHELOR OF INDUSTRIAL TECHNOLOGY", "BACHELOR OF ENGINEERING TECHNOLOGY"]),
+	}
+	
+	# Check for direct intersection first
+	if set(left).intersection(set(right)):
+		return "MATCH"
+	
+	# Check for equivalent programs
+	for left_val in left:
+		for right_val in right:
+			for match_set in program_matches:
+				if left_val in match_set and right_val in match_set:
+					return "MATCH"
+	
+	return "MISMATCH"
+
+
 def join_values(values: list[str]) -> str:
 	return " | ".join(values) if values else ""
 
@@ -363,8 +415,8 @@ def build_data_validation_rows(
 		target_college_values = sorted(target_college_set)
 
 		campus_status = status_from_sets(source_campus_values, target_campus_values)
-		program_status = status_from_sets(source_program_values, target_program_values)
-		college_status = status_from_sets(source_college_values, target_college_values)
+		program_status = status_from_sets_program(source_program_values, target_program_values)
+		college_status = status_from_sets_college(source_college_values, target_college_values)
 
 		if campus_status == "MATCH" and program_status == "MATCH" and college_status == "MATCH":
 			overall_status = "MATCH"
