@@ -58,7 +58,7 @@ def initialize_session_state():
 def main():
     initialize_session_state()
     
-    st.title("📊 Excel/CSV Comparison Tool")
+    st.title("📊 Automation Tool for Graduate Students")
     st.markdown("""
     Compare two Excel or CSV files by matching names and validate data consistency.
     Upload your **source-of-truth** file and **target** file to get started.
