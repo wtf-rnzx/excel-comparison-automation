@@ -1,0 +1,18 @@
+{
+    "campus_mappings": [
+        {
+            "source": "PABLO BORBON",
+            "target": "MAIN"
+        },
+        {
+            "source": "JPLPC-MALVAR",
+            "target": "MALVAR"
+        },
+        {
+            "source": "ARASOF-NASUGBU",
+            "target": "NASUGBU"
+        }
+    ],
+    "program_mappings": [],
+    "college_mappings": []
+}

@@ -1,5 +1,7 @@
 data/source/
 data/target/
+data/
+
 output/
 
 __pycache__/
