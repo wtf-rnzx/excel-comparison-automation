@@ -38,7 +38,7 @@ def main():
     initialize_session_state(MAPPING_STORAGE)
     
     st.title("📊 Automation Tool for Excel/CSV Comparison")
-    st.subheader("Compare and Validate Graduate Student Data Across Files")
+    st.subheader("Compare and Validate BatstateU Student Data Across Files")
     st.markdown("""
     Compare two Excel or CSV files by matching names and validate data consistency.
     Upload your **source-of-truth** file and **target** file to get started.
